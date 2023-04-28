@@ -1,16 +1,18 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity 0.8.13;
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+pragma solidity 0.8.11;
 
+import "@openzeppelin-contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@uniswap/lib/contracts/libraries/Babylonian.sol";
+
+import "./interfaces/Babylonian.sol";
+
 import "./interfaces/IRewards.sol";
 import "./interfaces/IManager.sol";
 import "./interfaces/ILiquidityPool.sol";
-import "./utils/UniswapV2Library.sol";
 
 // @title Tokemak's UNI LP auto-compound strategy
 // @author Daniel G.
@@ -27,7 +29,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
     // @dev Tokemak's contract dependencies
     IRewards public tokemakRwrdContract;
     IManager public tokemakManagerContract;
-    ILiquidityPool public tokemakUniLpPool;
+    ILiquidityPool public tokemakSushiLpPool;
 
     // @dev UniswapV2 Router
     IUniswapV2Router02 public uniswapV2Router02;
@@ -46,25 +48,25 @@ contract Strategy is OwnableUpgradeable, IRewards {
     // @param _wethAddress Wrapped Eth address
     // @param _tokemakRwrdContractAddress Tokemak's rewards controller address
     // @param _tokemakManagerContractAddress Tokemak's main manager controller address
-    // @param _tokemakUniLpPoolAddress Tokemak's uniswap LP pool address
+    // @param _tokemakSushiLpPoolAddress Tokemak's uniswap LP pool address
     // @param _uniswapV2Router02Address Un
     function initialize(
-        address _tokemakUniLpPoolAddress,
+        address _tokemakSushiLpPoolAddress,
         address _tokemakRwrdContractAddress,
         address _tokemakManagerContractAddress,
         address _uniswapV2Router02Address,
         address _wethAddress,
-        address _tokeAddress,
-        address _uniV2LpTokensPairsAddress
+        address _tokeAddress
     ) public initializer {
         __Ownable_init();
-        tokemakUniLpPool = ILiquidityPool(_tokemakUniLpPoolAddress);
+        tokemakSushiLpPool = ILiquidityPool(_tokemakSushiLpPoolAddress);
         tokemakRwrdContract = IRewards(_tokemakRwrdContractAddress);
         tokemakManagerContract = IManager(_tokemakManagerContractAddress);
         uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02Address);
         wethAsset = IERC20(_wethAddress);
         tokematAsset = IERC20(_tokeAddress);
-        uniV2LpTokensPairs = IUniswapV2Pair(_uniV2LpTokensPairsAddress);
+        uniV2LpTokensPairs = IUniswapV2Pair(IUniswapV2Factory(uniswapV2Router02.factory())
+            .getPair(address(tokematAsset), address(wethAsset)));
     }
 
     // @notice Deposits Uni LP tokens into contract callable by only owner
@@ -74,27 +76,27 @@ contract Strategy is OwnableUpgradeable, IRewards {
     function deposit(uint256 _amount) public {
         require(_amount > 0, "TUniLPS 03: Invalid deposit amount");
 
-        // @dev Trasnfer UniLP token to this contract
-        // uniV2LpTokensPairs.approve(address(uniswapV2Router02), _amount);
-        // uniV2LpTokensPairs.transferFrom(_msgSender(), address(this), _amount);
+        /// @dev Trasnfer UniLP token to this contract
+        uniV2LpTokensPairs.approve(address(uniswapV2Router02), _amount);
+        uniV2LpTokensPairs.transferFrom(_msgSender(), address(this), _amount);
 
-        // if (uniV2LpTokensPairs.balanceOf(address(this)) >= _amount) {
-        //     emit Deposit(_msgSender(), _amount);
-        //     stakes = _amount;
-        // } else {
-        //     revert("TUniLPS 04: Deposit failed.");
-        // }
+        if (uniV2LpTokensPairs.balanceOf(address(this)) >= _amount) {
+            emit Deposit(_msgSender(), _amount);
+            stakes = _amount;
+        } else {
+            revert("TUniLPS 04: Deposit failed.");
+        }
 
-        // // @dev stakes all deposits
-        // _stake(stakes);
+        // @dev stakes all deposits
+        _stake(stakes);
     }
 
     // @notice Stakes all its deposits in Tokemak's UNI LP token pool
     // @param _amount Amount of UNI LP tokens to stake
     function _stake(uint256 _amount) internal {
         uniV2LpTokensPairs.approve(address(uniswapV2Router02), _amount);
-        uniV2LpTokensPairs.approve(address(tokemakUniLpPool), _amount);
-        tokemakUniLpPool.deposit(_amount);
+        uniV2LpTokensPairs.approve(address(tokemakSushiLpPool), _amount);
+        tokemakSushiLpPool.deposit(_amount);
         emit Stake(_msgSender(), _amount);
     }
 
@@ -113,17 +115,15 @@ contract Strategy is OwnableUpgradeable, IRewards {
         uint8 v,
         bytes32 r,
         bytes32 s // bytes calldata signature
-    ) external override {
+    ) internal override {
         tokemakRwrdContract.claim(recipient, v, r, s);
     }
 
     // @notice Get current claimable token rewards amount
     // @return amount to claim in the current cycle
-    function getClaimableAmount(Recipient calldata recipient)
-        external
-        override
-        returns (uint256)
-    {
+    function _getClaimableAmount(
+        Recipient calldata recipient
+    ) external override returns (uint256) {
         return tokemakRwrdContract.getClaimableAmount(recipient);
     }
 
@@ -144,12 +144,12 @@ contract Strategy is OwnableUpgradeable, IRewards {
         bytes32 s
     ) external {
         // @dev 1.- Check for positive amount of toke rewards in current cycle
-        uint256 claimableRwrds = this.getClaimableAmount(recipient);
+        uint256 claimableRwrds = _getClaimableAmount(recipient);
         uint256 tokemakBalance;
 
         // @dev 2.- Claim TOKE rewards
         if (claimableRwrds > 0) {
-            this.claim(recipient, v, r, s);
+            _claim(recipient, v, r, s);
             tokemakBalance = tokematAsset.balanceOf(address(this));
             require(
                 tokemakBalance >= claimableRwrds,
@@ -157,7 +157,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
             );
         }
         // @dev 3.- Swap needed amount of total TOKE rewards to form token pair TOKE-ETH
-        _buyWETH(tokemakBalance);
+        _balanceLiquidity(tokemakBalance);
 
         uint256 wethBalance = wethAsset.balanceOf(address(this));
         // @dev 4.- Provide liquidity to UniswapV2 to TOKE-ETH pool
@@ -174,12 +174,9 @@ contract Strategy is OwnableUpgradeable, IRewards {
     // @notice Buy needed WETHc to form token pair TOKE-ETH
     // @param _amount of weth to buy
     // @return Weth amount bought
-    function _buyWETH(uint256 _amount) internal returns (uint256) {
-        (uint256 reserveA, ) = UniswapV2Library.getReserves(
-            uniswapV2Router02.factory(),
-            address(tokematAsset),
-            address(wethAsset)
-        );
+    function _balanceLiquidity(uint256 _amount) internal returns (uint256) {
+        (uint256 reserveA, , ) = IUniswapV2Pair(uniV2LpTokensPairs)
+            .getReserves();
 
         // @dev ondo.fi use of Zapper's Babylonian function to balance amount of assets for LP pool
         uint256 amountToSwap = calculateSwapInAmount(reserveA, _amount);
@@ -188,23 +185,6 @@ contract Strategy is OwnableUpgradeable, IRewards {
         path[1] = address(wethAsset);
 
         return swapExactTokens(amountToSwap, 0, path);
-    }
-
-    // @notice Exactly how much of userIn to swap to get perfectly balanced ratio for LP tokens
-    // @dev This function is a Reused calculation from Ondo.fi sushistaking v2 strategy
-    // @dev This code is cloned from L1242-1253 of UniswapV2_ZapIn_General_V4 at https://etherscan.io/address/0x5ACedBA6C402e2682D312a7b4982eda0Ccf2d2E3#code#L1242
-    // @param reserveIn Amount of reserves for asset 0
-    // @param userIn Availabe amount of asset 0 to swap
-    // @return Amount of userIn to swap for asset 1
-    function calculateSwapInAmount(uint256 reserveIn, uint256 userIn)
-        internal
-        pure
-        returns (uint256)
-    {
-        return
-            (Babylonian.sqrt(
-                reserveIn * (userIn * 3988000 + reserveIn * 3988009)
-            ) - reserveIn * 1997) / 1994;
     }
 
     // @notice Swaps an exact amount of input tokens for as many output tokens as possible,
@@ -227,6 +207,22 @@ contract Strategy is OwnableUpgradeable, IRewards {
             )[path.length - 1];
     }
 
+    // @notice Exactly how much of userIn to swap to get perfectly balanced ratio for LP tokens
+    // @dev This function is a Reused calculation from Ondo.fi sushistaking v2 strategy
+    // @dev This code is cloned from L1242-1253 of UniswapV2_ZapIn_General_V4 at https://etherscan.io/address/0x5ACedBA6C402e2682D312a7b4982eda0Ccf2d2E3#code#L1242
+    // @param reserveIn Amount of reserves for asset 0
+    // @param userIn Availabe amount of asset 0 to swap
+    // @return Amount of userIn to swap for asset 1
+    function calculateSwapInAmount(
+        uint256 reserveIn,
+        uint256 userIn
+    ) public pure returns (uint256) {
+        return
+            (Babylonian.sqrt(
+                reserveIn * (userIn * 3988000 + reserveIn * 3988009)
+            ) - reserveIn * 1997) / 1994;
+    }
+
     // @notice Uniswapv2 function to add liquidity to existing pool
     // @param tokenA 1st pair asset address
     // @param tokenB 2nd pair asset address
@@ -237,14 +233,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
         address tokenB,
         uint256 amount0,
         uint256 amount1
-    )
-        internal
-        returns (
-            uint256 out0,
-            uint256 out1,
-            uint256 lp
-        )
-    {
+    ) public returns (uint256 out0, uint256 out1, uint256 lp) {
         IERC20(tokenA).approve(address(uniswapV2Router02), amount0);
         IERC20(tokenB).approve(address(uniswapV2Router02), amount1);
         (out0, out1, lp) = uniswapV2Router02.addLiquidity(
@@ -254,10 +243,21 @@ contract Strategy is OwnableUpgradeable, IRewards {
             amount1,
             0,
             0,
-            address(this),
+            msg.sender,
             block.timestamp
         );
     }
+
+    // function addLiquidityETH(
+    //   address token,
+    //   uint amountTokenDesired,
+    //   uint amountTokenMin,
+    //   uint amountETHMin,
+    //   address to,
+    //   uint deadline
+    // ) external payable returns (uint amountToken, uint amountETH, uint liquidity){
+
+    // }
 
     // @notice Request anticipated withdrawal to Tokemak's Uni LP pool
     // @dev Request will be served on next cycle (currently 7 days)
@@ -266,7 +266,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
             _amount <= stakes,
             " TUniLPS 06: insufficient funds to withdraw."
         );
-        tokemakUniLpPool.requestWithdrawal(_amount);
+        tokemakSushiLpPool.requestWithdrawal(_amount);
         emit RequestWithdraw(_msgSender(), _amount);
     }
 
@@ -276,7 +276,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
 
     // @notice Withdrawal Tokemak's Uni LP tokens
     function withdraw(uint256 _amount) public {
-        (uint256 minCycle, ) = tokemakUniLpPool.requestedWithdrawals(
+        (uint256 minCycle, ) = tokemakSushiLpPool.requestedWithdrawals(
             _msgSender()
         );
         require(
@@ -288,7 +288,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
             "TUniLPS 08: insufficient funds to withdraw."
         );
         stakes -= _amount;
-        tokemakUniLpPool.withdraw(_amount);
+        tokemakSushiLpPool.withdraw(_amount);
         emit Withdraw(_msgSender(), _amount);
     }
 
