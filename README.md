@@ -1,9 +1,9 @@
 # Tokemak SUSHI LP Reactor strategy
 
 #### Ethereum Mainnet auto compound Toke rewards to provide lp to reactor
-**Reactor Current stats:** $5.3M TVL | 16.6% APR
-**Reactor address**: [0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3](https://etherscan.io/address/0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3)
-**Reavtor website:** Visit [tokemak](https://app.tokemak.xyz/) dashboard.
+- **Reactor Current stats:** $5.3M TVL | 16.6% APR
+- **Reactor address**: [0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3](https://etherscan.io/address/0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3)
+- **Reactor website:** Visit [tokemak](https://app.tokemak.xyz/) dashboard.
 
 **Strategy Steps:**
 
