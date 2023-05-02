@@ -7,18 +7,16 @@ import "@openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-
-import "./interfaces/Babylonian.sol";
-
-import "./interfaces/IRewards.sol";
-import "./interfaces/IManager.sol";
-import "./interfaces/ILiquidityPool.sol";
+import "./interfaces/tokemak/Babylonian.sol";
+import "./interfaces/tokemak/IRewards.sol";
+import "./interfaces/tokemak/IManager.sol";
+import "./interfaces/tokemak/ILiquidityPool.sol";
 
 // @title Tokemak's UNI LP auto-compound strategy
 // @author Daniel G.
 // @notice Basic implementation of harvesting LP token rewards from Tokemak protocol
 // @custz is an experimental contract.
-contract Strategy is OwnableUpgradeable, IRewards {
+contract TokemakStrategy is OwnableUpgradeable {
     using SafeERC20Upgradeable for IERC20;
 
     // @dev Staking Assets
@@ -100,7 +98,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
         emit Stake(_msgSender(), _amount);
     }
 
-    function rewardsSigner() external override returns (address) {
+    function rewardsSigner() external  returns (address) {
         return tokemakRwrdContract.rewardsSigner();
     }
 
@@ -110,20 +108,20 @@ contract Strategy is OwnableUpgradeable, IRewards {
     // @param v ECDSA signature v,
     // @param r ECDSA signature r,
     // @param s ECDSA signature s,
-    function claim(
-        Recipient calldata recipient,
+    function _claim(
+        IRewards.Recipient calldata recipient,
         uint8 v,
         bytes32 r,
         bytes32 s // bytes calldata signature
-    ) internal override {
+    ) internal  {
         tokemakRwrdContract.claim(recipient, v, r, s);
     }
 
     // @notice Get current claimable token rewards amount
     // @return amount to claim in the current cycle
     function _getClaimableAmount(
-        Recipient calldata recipient
-    ) external override returns (uint256) {
+        IRewards.Recipient calldata recipient
+    ) internal  returns (uint256) {
         return tokemakRwrdContract.getClaimableAmount(recipient);
     }
 
@@ -138,7 +136,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
     // @param r ECDSA signature,
     // @param s ECDSA signature,
     function autoCompoundWithPermit(
-        Recipient memory recipient,
+        IRewards.Recipient calldata recipient,
         uint8 v,
         bytes32 r,
         bytes32 s
@@ -302,7 +300,7 @@ contract Strategy is OwnableUpgradeable, IRewards {
         return id;
     }
 
-    function tokeToken() public override returns (IERC20) {
+    function tokeToken() public  returns (IERC20) {
         return tokemakRwrdContract.tokeToken();
     }
 }

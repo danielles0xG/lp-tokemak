@@ -7,3 +7,4 @@ forge-std/=lib/forge-std/src/
 @uniswap/v2-core/=lib/v2-core/
 @uniswap/v2-periphery/=lib/v2-periphery/
 gnosis/=lib/safe-contracts/contracts/
+@solmate/=lib/solmate/src/

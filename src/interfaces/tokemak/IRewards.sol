@@ -25,9 +25,9 @@ interface IRewards {
 
     function tokeToken() external returns (IERC20);
 
-    function getClaimableAmount(Recipient calldata recipient)
-        external
-        returns (uint256);
+    function getClaimableAmount(
+        Recipient calldata recipient
+    ) external returns (uint256);
 
     function claim(
         Recipient calldata recipient,

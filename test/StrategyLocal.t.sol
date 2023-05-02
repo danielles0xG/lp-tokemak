@@ -2,17 +2,17 @@
 pragma solidity 0.8.11;
 
 import "forge-std/Test.sol";
-import "../src/interfaces/IWETH9.sol";
+import "../../src/interfaces/IWETH9.sol";
 import "@openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 import "../src/exchanges/UniswapV3.sol";
 
-import "../src/Strategy.sol";
+import "../src/TokemakStrategy.sol";
 
 contract StrategyTest is Test {
     UniswapV3 private exchange;
-    Strategy private strategy;
+    TokemakStrategy private strategy;
     address private user1;
     address immutable UNIV3_ROUTER = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
     address immutable SUSHI_ROUTER = 0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F;
@@ -71,7 +71,7 @@ contract StrategyTest is Test {
         assert(lp > 0);
 
         // Deploy Strategy
-        strategy = new Strategy();
+        strategy = new TokemakStrategy();
         strategy.initialize(
             TOKE_SUSHI_POOL,
             TOKE_MANAGER,
