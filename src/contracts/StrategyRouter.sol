@@ -5,15 +5,12 @@ import "./external/ERC4626RouterBase.sol";
 import "./interfaces/IWETH9.sol";
 import {ERC20} from "@solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
-import "@openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-contract StrategyRouter is OwnableUpgradeable, ERC4626RouterBase {
+contract StrategyRouter is ERC4626RouterBase {
     using SafeTransferLib for ERC20;
 
-    function initialize(IWETH9 _weth) public initializer {
+    constructor(IWETH9 _weth)PeripheryPayments(_weth){
         require(address(_weth) != address(0));
-        __Ownable_init();
-        __Periphery_init(_weth);
     }
 
     function depositToVault(

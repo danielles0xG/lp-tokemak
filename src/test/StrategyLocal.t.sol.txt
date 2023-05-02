@@ -2,7 +2,7 @@
 pragma solidity 0.8.11;
 
 import "forge-std/Test.sol";
-import "../src/interfaces/IWETH9.sol";
+import "../src/contracts/interfaces/IWETH9.sol";
 import "@openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 

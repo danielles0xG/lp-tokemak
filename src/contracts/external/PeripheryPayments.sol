@@ -22,7 +22,7 @@ abstract contract PeripheryPayments {
 
     IWETH9 public WETH9;
 
-    function __Periphery_init(IWETH9 _WETH9) internal{
+    constructor(IWETH9 _WETH9){
         require(address(_WETH9) != address(0));
         require(address(WETH9) == address(0), "PeripheryPayments::already init");
         WETH9 = _WETH9;

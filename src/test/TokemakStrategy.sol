@@ -2,13 +2,12 @@
 pragma solidity 0.8.11;
 
 import "forge-std/Test.sol";
-import "../../src/interfaces/IWETH9.sol";
+import "../contracts/interfaces/IWETH9.sol";
 import "@openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-import "../src/exchanges/UniswapV3.sol";
-
-import "../src/TokemakStrategy.sol";
+import "../contracts/exchanges/UniswapV3.sol";
+import "../contracts/TokemakStrategy.sol";
 
 contract StrategyTest is Test {
     UniswapV3 private exchange;
