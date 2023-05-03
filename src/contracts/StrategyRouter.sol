@@ -7,9 +7,9 @@ import {ERC20} from "@solmate/tokens/ERC20.sol";
 import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
 
 contract StrategyRouter is ERC4626RouterBase {
-    using SafeTransferLib for ERC20;
+    using SafeTransferLib for *;
 
-    constructor(IWETH9 _weth)PeripheryPayments(_weth){
+    constructor(IWETH9 _weth) PeripheryPayments(_weth) {
         require(address(_weth) != address(0));
     }
 
@@ -20,19 +20,17 @@ contract StrategyRouter is ERC4626RouterBase {
         uint256 minSharesOut
     ) external payable returns (uint256 sharesOut) {
         pullToken(ERC20(vault.asset()), amount, address(this));
+        ERC20(vault.asset()).approve(address(vault), amount);
         return deposit(vault, to, amount, minSharesOut);
     }
 
-    function withdrawToDeposit(
+    function reedemShares(
         IERC4626 fromVault,
-        IERC4626 toVault,
         address to,
         uint256 amount,
-        uint256 maxSharesIn,
         uint256 minSharesOut
     ) external payable returns (uint256 sharesOut) {
-        withdraw(fromVault, address(this), amount, maxSharesIn);
-        return deposit(toVault, to, amount, minSharesOut);
+        return withdraw(fromVault, address(to), amount, minSharesOut);
     }
 
     function redeemToDeposit(
@@ -47,11 +45,7 @@ contract StrategyRouter is ERC4626RouterBase {
         return deposit(toVault, to, amount, minSharesOut);
     }
 
-    function depositMax(
-        IERC4626 vault,
-        address to,
-        uint256 minSharesOut
-    ) public payable returns (uint256 sharesOut) {
+    function depositMax(IERC4626 vault, address to, uint256 minSharesOut) public payable returns (uint256 sharesOut) {
         ERC20 asset = ERC20(vault.asset());
         uint256 assetBalance = asset.balanceOf(msg.sender);
         uint256 maxDeposit = vault.maxDeposit(to);
@@ -60,16 +54,10 @@ contract StrategyRouter is ERC4626RouterBase {
         return deposit(vault, to, amount, minSharesOut);
     }
 
-    function redeemMax(
-        IERC4626 vault,
-        address to,
-        uint256 minAmountOut
-    ) public payable returns (uint256 amountOut) {
+    function redeemMax(IERC4626 vault, address to, uint256 minAmountOut) public payable returns (uint256 amountOut) {
         uint256 shareBalance = vault.balanceOf(msg.sender);
         uint256 maxRedeem = vault.maxRedeem(msg.sender);
-        uint256 amountShares = maxRedeem < shareBalance
-            ? maxRedeem
-            : shareBalance;
+        uint256 amountShares = maxRedeem < shareBalance ? maxRedeem : shareBalance;
         return redeem(vault, to, amountShares, minAmountOut);
     }
 }

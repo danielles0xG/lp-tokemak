@@ -1,0 +1,27 @@
+{
+  "name": "tokemak-strat",
+  "version": "1.0.0",
+  "description": "#### Ethereum Mainnet auto compound Toke rewards to provide lp to reactor - **Reactor Current stats:** $5.3M TVL | 16.6% APR - **Reactor address**: [0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3](https://etherscan.io/address/0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3) - **Reactor website:** Visit [tokemak](https://app.tokemak.xyz/) dashboard.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "devDependencies": {
+    "prettier": "^2.3.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.13"
+  },
+  "scripts": {
+    "lint": "prettier --write src/**/*.sol"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielles0xG/lp-tokemak.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/danielles0xG/lp-tokemak/issues"
+  },
+  "homepage": "https://github.com/danielles0xG/lp-tokemak#readme"
+}
