@@ -14,8 +14,8 @@ import "./mocks/StrategyMock.sol";
 
 contract StrategyRouterTest is Test {
     StrategyRouter public router;
-    ERC20Mock public uniPairToken;
-    StrategyMock public vaultMock;
+    ERC20Mock public underlying;
+    StrategyMock public vault;
     address payable public user;
 
     function setUp() public {
@@ -24,42 +24,74 @@ contract StrategyRouterTest is Test {
                 uint160(uint256(keccak256(abi.encodePacked("trusteeUser"))))
             )
         );
-        uniPairToken = new ERC20Mock();
-        vaultMock = new StrategyMock(uniPairToken);
+        underlying = new ERC20Mock();
+        vault = new StrategyMock(underlying);
         router = new StrategyRouter(IWETH9(address(new WETH())));
         vm.label(address(user), "user: ");
-        vm.label(address(uniPairToken), "uniPairToken: ");
-        vm.label(address(vaultMock), "StrategyMock: ");
+        vm.label(address(underlying), "underlying: ");
+        vm.label(address(vault), "StrategyMock: ");
         vm.label(address(router), "router: ");
     }
 
     function testDepositToVault(address user,uint96 amount) public {
         vm.assume(amount != 0);
         vm.startPrank(user);
-        uniPairToken.mint(user,amount);
-        uniPairToken.approve(address(router), amount);
-        uint256 minSharesOut = vaultMock.convertToShares(amount);
-        uint256 sharesOut = router.depositToVault(IERC4626(address(vaultMock)), user, amount, minSharesOut);
+        underlying.mint(user,amount);
+        underlying.approve(address(router), amount);
+        uint256 minSharesOut = vault.convertToShares(amount);
+        uint256 sharesOut = router.depositToVault(IERC4626(address(vault)), user, amount, minSharesOut);
         assert(sharesOut >= minSharesOut);
     }
 
-    function testWithdraw(address user,uint96 amount) external {
+    function testReedemShares(address user,uint96 amount) external {
         vm.startPrank(user);
 
         // mint shares to user
-        vaultMock.mint(user,amount); 
+        vault.mint(user,amount); 
         
         // mint underlying asset to vault
-        uniPairToken.mint(address(vaultMock),amount); 
+        underlying.mint(address(vault),amount); 
         
-        uint256 minSharesOut = vaultMock.convertToShares(amount);
-        vaultMock.approve(address(router),amount);
+        uint256 minSharesOut = vault.convertToShares(amount);
+        vault.approve(address(router),amount);
         uint256 sharesOut = router.reedemShares(
-            IERC4626(address(vaultMock)),
+            IERC4626(address(vault)),
             user,
             amount,
-            vaultMock.convertToShares(amount)
+            vault.convertToShares(amount)
         );
         assert(sharesOut >= minSharesOut);
+    }
+
+    function testDepositMax(uint96 amount) public {
+        vm.assume(amount != 0);
+        vm.startPrank(user);
+        underlying.mint(address(user), amount);
+
+        underlying.approve(address(router), amount);
+
+        router.approve(underlying, address(vault), amount);
+    
+        router.depositMax(IERC4626(address(vault)), address(user), amount);
+
+        assert(vault.balanceOf(address(user)) == amount);
+        assert(underlying.balanceOf(address(user)) == 0);
+    }
+    function testRedeemMax(uint96 amount) public {
+        vm.assume(amount != 0);
+        vm.startPrank(user);
+        underlying.mint(address(user), amount);
+
+        underlying.approve(address(router), amount);
+
+        router.approve(underlying, address(vault), amount);
+
+        router.depositToVault(IERC4626(address(vault)), address(user), amount, amount);
+
+        vault.approve(address(router), amount);
+        router.redeemMax(IERC4626(address(vault)),address(user), amount);
+
+        require(vault.balanceOf(address(user)) == 0);
+        require(underlying.balanceOf(address(user)) == amount);
     }
 }
