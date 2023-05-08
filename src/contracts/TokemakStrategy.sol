@@ -1,8 +1,9 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.11;
 
-import "@openzeppelin-contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin-contracts/contracts/access/Ownable.sol";
+import "@solmate/mixins/ERC4626.sol";
 
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
@@ -16,11 +17,11 @@ import "./interfaces/tokemak/ILiquidityPool.sol";
 // @author Daniel G.
 // @notice Basic implementation of harvesting LP token rewards from Tokemak protocol
 // @custz is an experimental contract.
-contract TokemakStrategy is OwnableUpgradeable {
-    using SafeERC20Upgradeable for IERC20;
+contract TokemakStrategy is ERC4626, Ownable {
+    using SafeERC20 for IERC20;
 
     // @dev Staking Assets
-    IUniswapV2Pair public uniV2LpTokensPairs;
+    IUniswapV2Pair public underlying;
     IERC20 public tokematAsset;
     IERC20 public wethAsset;
 
@@ -32,6 +33,7 @@ contract TokemakStrategy is OwnableUpgradeable {
     // @dev UniswapV2 Router
     IUniswapV2Router02 public uniswapV2Router02;
 
+    uint256 internal storedTotalAssets;
     // @notice variables to keep track of stake amounts
     uint256 public stakes;
 
@@ -42,59 +44,48 @@ contract TokemakStrategy is OwnableUpgradeable {
     event RequestWithdraw(address _investor, uint256 _amount);
 
     // @notice Init strategy Tokemak's dependencies
-    // @dev Returns Tokemaks contract instances for staking interactions
-    // @param _wethAddress Wrapped Eth address
+    // @dev Init tokemak dependencies
     // @param _tokemakRwrdContractAddress Tokemak's rewards controller address
     // @param _tokemakManagerContractAddress Tokemak's main manager controller address
     // @param _tokemakSushiLpPoolAddress Tokemak's uniswap LP pool address
     // @param _uniswapV2Router02Address Un
-    function initialize(
-        address _tokemakSushiLpPoolAddress,
-        address _tokemakRwrdContractAddress,
-        address _tokemakManagerContractAddress,
-        address _uniswapV2Router02Address,
-        address _wethAddress,
-        address _tokeAddress
-    ) public initializer {
-        __Ownable_init();
+    constructor(
+        ILiquidityPool _tokemakSushiLpPoolAddress,
+        IRewards _tokemakRwrdContractAddress,
+        IManager _tokemakManagerContractAddress,
+        IUniswapV2Router02 _uniswapV2Router02Address,
+        ERC20 _underlying
+    )ERC4626(_underlying,"dTokeVault","dTKV"){
+         require(underlying == IUniswapV2Pair(
+            IUniswapV2Factory(uniswapV2Router02.factory()).getPair(address(tokematAsset), address(wethAsset))
+        ));
         tokemakSushiLpPool = ILiquidityPool(_tokemakSushiLpPoolAddress);
         tokemakRwrdContract = IRewards(_tokemakRwrdContractAddress);
         tokemakManagerContract = IManager(_tokemakManagerContractAddress);
         uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02Address);
-        wethAsset = IERC20(_wethAddress);
-        tokematAsset = IERC20(_tokeAddress);
-        uniV2LpTokensPairs = IUniswapV2Pair(
-            IUniswapV2Factory(uniswapV2Router02.factory()).getPair(address(tokematAsset), address(wethAsset))
-        );
+        wethAsset = IERC20(uniswapV2Router02.WETH());
+        tokematAsset = IERC20(tokemakRwrdContract.tokeToken());
     }
 
     // @notice Deposits Uni LP tokens into contract callable by only owner
     // @dev Only Uni LP tokens for TOKE-ETH LP pool allowed
     // @dev Stakes all its deposits in Tokemak's UNI LP token pool
-    // @param _amount Amount of UNI LP token to deposit
-    function deposit(uint256 _amount) public {
-        require(_amount > 0, "TUniLPS 03: Invalid deposit amount");
-
-        /// @dev Trasnfer UniLP token to this contract
-        uniV2LpTokensPairs.approve(address(uniswapV2Router02), _amount);
-        uniV2LpTokensPairs.transferFrom(_msgSender(), address(this), _amount);
-
-        if (uniV2LpTokensPairs.balanceOf(address(this)) >= _amount) {
-            emit Deposit(_msgSender(), _amount);
-            stakes = _amount;
-        } else {
-            revert("TUniLPS 04: Deposit failed.");
-        }
-
+    // @param amount Amount of UNI LP token to deposit
+    function afterDeposit(uint256 /*asset*/, uint256 amount) internal override {
         // @dev stakes all deposits
-        _stake(stakes);
+        storedTotalAssets += amount;
+        _stake(amount);
+    }
+
+    function totalAssets() public view override returns (uint256){
+        return underlying.balanceOf(address(this));
     }
 
     // @notice Stakes all its deposits in Tokemak's UNI LP token pool
     // @param _amount Amount of UNI LP tokens to stake
     function _stake(uint256 _amount) internal {
-        uniV2LpTokensPairs.approve(address(uniswapV2Router02), _amount);
-        uniV2LpTokensPairs.approve(address(tokemakSushiLpPool), _amount);
+        underlying.approve(address(uniswapV2Router02), _amount);
+        underlying.approve(address(tokemakSushiLpPool), _amount);
         tokemakSushiLpPool.deposit(_amount);
         emit Stake(_msgSender(), _amount);
     }
@@ -159,7 +150,7 @@ contract TokemakStrategy is OwnableUpgradeable {
     // @param _amount of weth to buy
     // @return Weth amount bought
     function _balanceLiquidity(uint256 _amount) internal returns (uint256) {
-        (uint256 reserveA, , ) = IUniswapV2Pair(uniV2LpTokensPairs).getReserves();
+        (uint256 reserveA, , ) = IUniswapV2Pair(underlying).getReserves();
 
         // @dev ondo.fi use of Zapper's Babylonian function to balance amount of assets for LP pool
         uint256 amountToSwap = calculateSwapInAmount(reserveA, _amount);
