@@ -2,9 +2,13 @@
 pragma solidity >=0.5.0;
 
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import "@openzeppelin-contracts/contracts/interfaces/IERC20.sol";
+import "@solmate/utils/SafeTransferLib.sol";
+
+
 
 contract UniswapV3 {
+    using SafeTransferLib for *;
+
     ISwapRouter private router;
     uint32 private twapPeriod;
     error MinOutError();
@@ -20,8 +24,8 @@ contract UniswapV3 {
         uint256 amountIn,
         uint256 minOut
     ) external returns (uint256 amountOut) {
-        IERC20(token0).transferFrom(msg.sender, address(this), amountIn);
-        IERC20(token0).approve(address(router), amountIn);
+        ERC20(token0).transferFrom(msg.sender, address(this), amountIn);
+        ERC20(token0).safeApprove(address(router), amountIn);
         if (
             (amountOut = router.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams({
