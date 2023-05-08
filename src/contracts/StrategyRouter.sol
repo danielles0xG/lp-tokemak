@@ -45,7 +45,11 @@ contract StrategyRouter is ERC4626RouterBase {
         return deposit(toVault, to, amount, minSharesOut);
     }
 
-    function depositMax(IERC4626 vault, address to, uint256 minSharesOut) public payable returns (uint256 sharesOut) {
+    function depositMax(
+        IERC4626 vault,
+        address to,
+        uint256 minSharesOut
+    ) public payable returns (uint256 sharesOut) {
         ERC20 asset = ERC20(vault.asset());
         uint256 assetBalance = asset.balanceOf(msg.sender);
         uint256 maxDeposit = vault.maxDeposit(to);
@@ -54,10 +58,16 @@ contract StrategyRouter is ERC4626RouterBase {
         return deposit(vault, to, amount, minSharesOut);
     }
 
-    function redeemMax(IERC4626 vault, address to, uint256 minAmountOut) public payable returns (uint256 amountOut) {
+    function redeemMax(
+        IERC4626 vault,
+        address to,
+        uint256 minAmountOut
+    ) public payable returns (uint256 amountOut) {
         uint256 shareBalance = vault.balanceOf(msg.sender);
         uint256 maxRedeem = vault.maxRedeem(msg.sender);
-        uint256 amountShares = maxRedeem < shareBalance ? maxRedeem : shareBalance;
+        uint256 amountShares = maxRedeem < shareBalance
+            ? maxRedeem
+            : shareBalance;
         return redeem(vault, to, amountShares, minAmountOut);
     }
 }

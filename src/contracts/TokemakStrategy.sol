@@ -55,10 +55,8 @@ contract TokemakStrategy is ERC4626, Ownable {
         IManager _tokemakManagerContractAddress,
         IUniswapV2Router02 _uniswapV2Router02Address,
         ERC20 _underlying
-    )ERC4626(_underlying,"dTokeVault","dTKV"){
-         require(underlying == IUniswapV2Pair(
-            IUniswapV2Factory(uniswapV2Router02.factory()).getPair(address(tokematAsset), address(wethAsset))
-        ));
+    )ERC4626(_underlying,"dTokeVault","dTKV")Ownable(){
+         require(address(underlying) != address(0x0));
         tokemakSushiLpPool = ILiquidityPool(_tokemakSushiLpPoolAddress);
         tokemakRwrdContract = IRewards(_tokemakRwrdContractAddress);
         tokemakManagerContract = IManager(_tokemakManagerContractAddress);

@@ -6,7 +6,7 @@ import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
 import {PeripheryPayments} from "./PeripheryPayments.sol";
 
 /// @title ERC4626 Router Base Contract
-abstract contract ERC4626RouterBase is IERC4626RouterBase, PeripheryPayments{
+abstract contract ERC4626RouterBase is IERC4626RouterBase, PeripheryPayments {
     using SafeTransferLib for ERC20;
 
     /// @inheritdoc IERC4626RouterBase
@@ -40,7 +40,9 @@ abstract contract ERC4626RouterBase is IERC4626RouterBase, PeripheryPayments{
         uint256 amount,
         uint256 maxSharesOut
     ) public payable virtual override returns (uint256 sharesOut) {
-        if ((sharesOut = vault.withdraw(amount, to, msg.sender)) > maxSharesOut) {
+        if (
+            (sharesOut = vault.withdraw(amount, to, msg.sender)) > maxSharesOut
+        ) {
             revert MaxSharesError();
         }
     }
