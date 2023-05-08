@@ -25,7 +25,7 @@ contract E2eTest is Test {
     IERC20 private underlying;
     address private user1;
 
-    function testDepositToVault() public {
+    function setUp() public {
         // FORK  - Simulate mainnet deployments
         vm.createSelectFork(vm.envString("RPC_MAINNET"), 17110191);
         // Fund user
@@ -89,6 +89,10 @@ contract E2eTest is Test {
                 block.timestamp
             );
         assert(underlying.balanceOf(user1) >= lpAmount); // eth/toke lp
+
+    }
+
+    function testDepositToVault() public {
 
         uint256 depositAmount = underlying.balanceOf(user1);
         uint256 minSharesOut = strategy.convertToShares(depositAmount);
