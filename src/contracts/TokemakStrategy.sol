@@ -2,6 +2,7 @@
 pragma solidity 0.8.11;
 
 import "@openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin-contracts/contracts/interfaces/IERC20.sol";
 import "@openzeppelin-contracts/contracts/access/Ownable.sol";
 import "@solmate/mixins/ERC4626.sol";
 
@@ -12,16 +13,17 @@ import "./interfaces/tokemak/Babylonian.sol";
 import "./interfaces/tokemak/IRewards.sol";
 import "./interfaces/tokemak/IManager.sol";
 import "./interfaces/tokemak/ILiquidityPool.sol";
+import "forge-std/Test.sol";
+
+
 
 // @title Tokemak's UNI LP auto-compound strategy
 // @author Daniel G.
 // @notice Basic implementation of harvesting LP token rewards from Tokemak protocol
 // @custz is an experimental contract.
 contract TokemakStrategy is ERC4626, Ownable {
-    using SafeERC20 for IERC20;
 
     // @dev Staking Assets
-    IUniswapV2Pair public underlying;
     IERC20 public tokematAsset;
     IERC20 public wethAsset;
 
@@ -48,19 +50,19 @@ contract TokemakStrategy is ERC4626, Ownable {
     // @param _tokemakRwrdContractAddress Tokemak's rewards controller address
     // @param _tokemakManagerContractAddress Tokemak's main manager controller address
     // @param _tokemakSushiLpPoolAddress Tokemak's uniswap LP pool address
-    // @param _uniswapV2Router02Address Un
+    // @param _sushiSwapV2Router02Address Un
     constructor(
         ILiquidityPool _tokemakSushiLpPoolAddress,
         IRewards _tokemakRwrdContractAddress,
         IManager _tokemakManagerContractAddress,
-        IUniswapV2Router02 _uniswapV2Router02Address,
+        IUniswapV2Router02 _sushiSwapV2Router02Address,
         ERC20 _underlying
-    )ERC4626(_underlying,"dTokeVault","dTKV")Ownable(){
-         require(address(underlying) != address(0x0));
+    )ERC4626(_underlying,"dTokeVault","dTKV"){
+        require(address(_underlying) != address(0),"address zero");   
         tokemakSushiLpPool = ILiquidityPool(_tokemakSushiLpPoolAddress);
         tokemakRwrdContract = IRewards(_tokemakRwrdContractAddress);
         tokemakManagerContract = IManager(_tokemakManagerContractAddress);
-        uniswapV2Router02 = IUniswapV2Router02(_uniswapV2Router02Address);
+        uniswapV2Router02 = IUniswapV2Router02(_sushiSwapV2Router02Address);
         wethAsset = IERC20(uniswapV2Router02.WETH());
         tokematAsset = IERC20(tokemakRwrdContract.tokeToken());
     }
@@ -76,16 +78,16 @@ contract TokemakStrategy is ERC4626, Ownable {
     }
 
     function totalAssets() public view override returns (uint256){
-        return underlying.balanceOf(address(this));
+        return asset.balanceOf(address(this));
     }
 
     // @notice Stakes all its deposits in Tokemak's UNI LP token pool
     // @param _amount Amount of UNI LP tokens to stake
-    function _stake(uint256 _amount) internal {
-        underlying.approve(address(uniswapV2Router02), _amount);
-        underlying.approve(address(tokemakSushiLpPool), _amount);
-        tokemakSushiLpPool.deposit(_amount);
-        emit Stake(_msgSender(), _amount);
+    function _stake(uint256 amount) internal {
+        SafeERC20.safeApprove(IERC20(address(asset)),address(uniswapV2Router02),amount);
+        SafeERC20.safeApprove(IERC20(address(asset)),address(tokemakSushiLpPool),amount);
+        tokemakSushiLpPool.deposit(amount);
+        emit Stake(_msgSender(), amount);
     }
 
     function rewardsSigner() external returns (address) {
@@ -148,7 +150,7 @@ contract TokemakStrategy is ERC4626, Ownable {
     // @param _amount of weth to buy
     // @return Weth amount bought
     function _balanceLiquidity(uint256 _amount) internal returns (uint256) {
-        (uint256 reserveA, , ) = IUniswapV2Pair(underlying).getReserves();
+        (uint256 reserveA, , ) = IUniswapV2Pair(address(asset)).getReserves();
 
         // @dev ondo.fi use of Zapper's Babylonian function to balance amount of assets for LP pool
         uint256 amountToSwap = calculateSwapInAmount(reserveA, _amount);

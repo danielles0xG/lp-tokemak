@@ -24,7 +24,7 @@ contract UniswapV3 {
         uint256 amountIn,
         uint256 minOut
     ) external returns (uint256 amountOut) {
-        ERC20(token0).transferFrom(msg.sender, address(this), amountIn);
+        ERC20(token0).safeTransferFrom(msg.sender, address(this), amountIn);
         ERC20(token0).safeApprove(address(router), amountIn);
         if (
             (amountOut = router.exactInputSingle(
