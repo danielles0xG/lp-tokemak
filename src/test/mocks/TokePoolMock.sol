@@ -1,7 +1,5 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.11;
-import "@solmate/mixins/ERC4626.sol";
-import "@solmate/utils/SafeTransferLib.sol";
 
 contract TokePoolMock{  
     uint256 deposits;

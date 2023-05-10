@@ -25,8 +25,8 @@ contract TokeLpVault is ERC4626, Ownable {
     IERC20 public wethAsset;
 
     // @dev Tokemak's contract dependencies
-    IRewards public tokemakRwrdContract;
-    IManager public tokemakManagerContract;
+    IRewards public tokemakRewards;
+    IManager public tokemakManager;
     ILiquidityPool public tokemakSushiReactor;
     IUniswapV2Router02 public uniswapV2Router02;
 
@@ -43,24 +43,24 @@ contract TokeLpVault is ERC4626, Ownable {
 
     // @notice Init strategy Tokemak's dependencies
     // @dev Init tokemak dependencies
-    // @param _tokemakRwrdContractAddress Tokemak's rewards controller address
-    // @param _tokemakManagerContractAddress Tokemak's main manager controller address
+    // @param _tokemakRewardsAddress Tokemak's rewards controller address
+    // @param _tokemakManagerAddress Tokemak's main manager controller address
     // @param _tokemakSushiReactorAddress Tokemak's uniswap LP pool address
     // @param _sushiSwapV2Router02Address Un
     constructor(
         ILiquidityPool _tokemakSushiReactorAddress,
-        IRewards _tokemakRwrdContractAddress,
-        IManager _tokemakManagerContractAddress,
+        IRewards _tokemakRewardsAddress,
+        IManager _tokemakManagerAddress,
         IUniswapV2Router02 _sushiSwapV2Router02Address,
         ERC20 _underlying
     ) ERC4626(_underlying, "dTokeVault", "dTKV") {
         require(address(_underlying) != address(0), "address zero");
         tokemakSushiReactor = ILiquidityPool(_tokemakSushiReactorAddress);
-        tokemakRwrdContract = IRewards(_tokemakRwrdContractAddress);
-        tokemakManagerContract = IManager(_tokemakManagerContractAddress);
+        tokemakRewards = IRewards(_tokemakRewardsAddress);
+        tokemakManager = IManager(_tokemakManagerAddress);
         uniswapV2Router02 = IUniswapV2Router02(_sushiSwapV2Router02Address);
         wethAsset = IERC20(uniswapV2Router02.WETH());
-        tokematAsset = IERC20(tokemakRwrdContract.tokeToken());
+        tokematAsset = IERC20(tokemakRewards.tokeToken());
     }
 
     receive() payable external{
@@ -80,7 +80,7 @@ contract TokeLpVault is ERC4626, Ownable {
     // @param v ECDSA signature,
     // @param r ECDSA signature,
     // @param s ECDSA signature,
-    function autoCompoundWithPermit(IRewards.Recipient calldata recipient,bytes memory sig) external {
+    function autoCompoundWithPermit(IRewards.Recipient calldata recipient,bytes memory stratConfig, bytes memory sig) external {
         // @dev 1.- Check for positive amount of toke rewards in current cycle
         uint256 claimableRwrds = _getClaimableAmount(recipient);
         uint256 tokemakBalance;
@@ -96,8 +96,10 @@ contract TokeLpVault is ERC4626, Ownable {
         _balanceLiquidity(tokemakBalance);
 
         uint256 wethBalance = wethAsset.balanceOf(address(this));
+
         // @dev 4.- Provide liquidity to UniswapV2 to TOKE-ETH pool
-        (, , uint256 lpAmount) = _addLiquidity(address(tokematAsset), address(wethAsset), tokemakBalance, wethBalance);
+        (uint256 lpAmountAMin,uint256 lpAmountBMin) = abi.decode(stratConfig, (uint256,uint256));
+        (, , uint256 lpAmount) = _addLiquidity(address(tokematAsset), address(wethAsset), tokemakBalance, wethBalance,lpAmountAMin,lpAmountBMin);
         // @dev 5.- Stake UNIV2 LP Token into TOKEMAK Uni LP Token Pool
         if (lpAmount > 0) _stake(lpAmount);
     }
@@ -116,7 +118,7 @@ contract TokeLpVault is ERC4626, Ownable {
     // @notice Withdrawal Tokemak's Uni LP tokens
     function beforeWithdraw(uint256 amount, uint256 shares) internal override {
         (uint256 minCycle, ) = tokemakSushiReactor.requestedWithdrawals(_msgSender());
-        require(minCycle > tokemakManagerContract.getCurrentCycleIndex(), "TUniLPS 07: Withdrawal not yet available.");
+        require(minCycle > tokemakManager.getCurrentCycleIndex(), "TUniLPS 07: Withdrawal not yet available.");
         require(amount <= storedTotalAssets, "TUniLPS 08: insufficient funds to withdraw.");
         storedTotalAssets -= amount;
         tokemakSushiReactor.withdraw(amount);
@@ -151,13 +153,13 @@ contract TokeLpVault is ERC4626, Ownable {
         bytes32 s,
         uint8 v
     ) internal {
-        tokemakRwrdContract.claim(recipient, v, r, s);
+        tokemakRewards.claim(recipient, v, r, s);
     }
 
     // @notice Get current claimable token rewards amount
     // @return amount to claim in the current cycle
     function _getClaimableAmount(IRewards.Recipient calldata recipient) internal returns (uint256) {
-        return tokemakRwrdContract.getClaimableAmount(recipient);
+        return tokemakRewards.getClaimableAmount(recipient);
     }
 
 
@@ -217,7 +219,9 @@ contract TokeLpVault is ERC4626, Ownable {
         address tokenA,
         address tokenB,
         uint256 amount0,
-        uint256 amount1
+        uint256 amount1,
+        uint256 amountAMin,
+        uint256 amountBMin
     ) internal returns (uint256 out0, uint256 out1, uint256 lp) {
         IERC20(tokenA).approve(address(uniswapV2Router02), amount0);
         IERC20(tokenB).approve(address(uniswapV2Router02), amount1);
@@ -226,8 +230,8 @@ contract TokeLpVault is ERC4626, Ownable {
             tokenB,
             amount0,
             amount1,
-            0,
-            0,
+            amountAMin,
+            amountBMin,
             msg.sender,
             block.timestamp
         );
