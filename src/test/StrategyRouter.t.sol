@@ -33,7 +33,7 @@ contract StrategyRouterTest is Test {
         vm.label(address(router), "router: ");
     }
 
-    function testDepositToVault(address user,uint96 amount) public {
+    function testDepositToVault(uint96 amount) public {
         vm.assume(amount != 0);
         vm.startPrank(user);
         underlying.mint(user,amount);

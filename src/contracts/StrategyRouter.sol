@@ -4,15 +4,13 @@ pragma solidity 0.8.11;
 import "./external/ERC4626RouterBase.sol";
 import "./interfaces/IWETH9.sol";
 import {ERC20} from "@solmate/tokens/ERC20.sol";
-import {SafeTransferLib} from "@solmate/utils/SafeTransferLib.sol";
+import "@openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract StrategyRouter is ERC4626RouterBase {
-    using SafeTransferLib for *;
 
     constructor(IWETH9 _weth) PeripheryPayments(_weth) {
         require(address(_weth) != address(0));
     }
-
     function depositToVault(
         IERC4626 vault,
         address to,
@@ -20,8 +18,22 @@ contract StrategyRouter is ERC4626RouterBase {
         uint256 minSharesOut
     ) external payable returns (uint256 sharesOut) {
         pullToken(ERC20(vault.asset()), amount, address(this));
-        ERC20(vault.asset()).approve(address(vault), amount);
+        SafeERC20.safeIncreaseAllowance(IERC20(address(vault.asset())),address(vault), amount);
         return deposit(vault, to, amount, minSharesOut);
+    }
+
+    /// @notice Requests that the manager prepare funds for withdrawal next cycle
+    /// @notice Invoking this function when sender already has a currently pending request will overwrite that requested amount and reset the cycle timer
+    /// @param fromVault Vault from where redeemed shares
+    /// @param to At name of who will this be reedem
+    /// @param amount Amount of fTokens requested to be redeemed
+    function requestReedemShares(
+        IERC4626 fromVault,
+        address to,
+        uint256 amount
+    ) external {
+        require(ERC20(fromVault.asset()).balanceOf(msg.sender) >= amount);
+        fromVault.withdraw(amount,to,msg.sender);
     }
 
     function reedemShares(

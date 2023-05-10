@@ -7,21 +7,25 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "../../contracts/exchanges/UniswapV3.sol";
-import "../../contracts/TokemakStrategy.sol";
-import "../../contracts/StrategyRouter.sol";
+import "../../contracts/TokeLpVault.sol";
 import "../../contracts/interfaces/tokemak/IRewards.sol";
 import "../../contracts/interfaces/tokemak/IManager.sol";
 import "../../contracts/interfaces/tokemak/ILiquidityPool.sol";
 import "../../contracts/interfaces/IWETH9.sol";
 import {TB} from "./TestBase.sol";
-
+interface ITokeLpVault {
+    event Deposit(address _investor, uint256 _amount);
+    event Stake(address _investor, uint256 _amount);
+    event Withdraw(address _investor, uint256 _amount);
+    event RequestWithdraw(address _investor, uint256 _amount);
+}
 /**
     MAINNET FORK INTEGRATION
  */
-contract E2eTest is Test {
+contract E2eTest is Test ,ITokeLpVault{
     UniswapV3 private exchange;
-    StrategyRouter private router;
-    TokemakStrategy private strategy;
+
+    TokeLpVault private vault;
     IERC20 private underlying;
     address private user1;
 
@@ -36,20 +40,19 @@ contract E2eTest is Test {
 
         // Deploy contracts
         exchange = new UniswapV3(TB.UNIV3_ROUTER);
-        strategy = new TokemakStrategy(
-            ILiquidityPool(TB.TOKE_SUSHI_POOL),
+        vault = new TokeLpVault(
+            ILiquidityPool(TB.TOKE_SUSHI_REACTOR),
             IRewards(TB.TOKE_REWARDS),
             IManager(TB.TOKE_MANAGER),
             IUniswapV2Router02(TB.SUSHI_ROUTER),
             ERC20(TB.SUSHI_LP_TOKEN)
         );
-        vm.label(address(strategy), "TokeStrategy");
-        router = new StrategyRouter(IWETH9(TB.WETH));
-        vm.label(address(router), "StrategyRouter");
+        vm.label(address(vault), "Tokevault");
 
         // Label dependency addresses
-        vm.label(TB.WETH, "WETH: ");
-        vm.label(TB.TOKE, "TOKE: ");
+        vm.label(TB.WETH, "WETH");
+        vm.label(TB.TOKE, "TOKE");
+        vm.label(TB.TOKE_SUSHI_REACTOR,"TOKE_SUSHI_REACTOR");
         underlying = IERC20(TB.SUSHI_LP_TOKEN);
         vm.label(address(underlying), "SUSHI_LP_TOKEN");
         vm.label(TB.SUSHI_ROUTER, "SUSHI_ROUTER");
@@ -82,11 +85,33 @@ contract E2eTest is Test {
         assert(underlying.balanceOf(user1) >= lpAmount); // eth/toke lp
     }
 
-    function testDepositToVault() public {
+    function _setDeposit() internal returns(uint256){
         uint256 depositAmount = underlying.balanceOf(user1);
-        uint256 minSharesOut = strategy.convertToShares(depositAmount);
-        underlying.approve(address(router), depositAmount);
-        uint256 sharesOut = router.depositToVault(IERC4626(address(strategy)), user1, minSharesOut, depositAmount);
-        assert(sharesOut >= minSharesOut);
+        depositAmount = depositAmount / 2;
+
+        underlying.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount,user1);
+        return depositAmount;
+    }
+
+    function testDeposit() public {
+        uint256 depositAmount = underlying.balanceOf(user1);
+        depositAmount = depositAmount / 4;
+        uint256 minSharesOut = vault.convertToShares(depositAmount);
+        underlying.approve(address(vault), depositAmount);
+        uint256 sharesOut = vault.deposit(depositAmount,user1);
+        assert(ERC20(vault).balanceOf(user1) >= minSharesOut);
+    }
+
+    function testRequestWithdrawal() public {
+        uint256 depositAmount = _setDeposit();
+        vm.expectEmit(true, true, false, true);
+        emit RequestWithdraw(user1,depositAmount);
+        vault.requestWithdrawal(depositAmount);
+    }
+    function testWithdraw() public{
+        uint256 depositAmount = _setDeposit();
+        vm.expectRevert();
+        vault.withdraw(depositAmount,user1,user1);
     }
 }
