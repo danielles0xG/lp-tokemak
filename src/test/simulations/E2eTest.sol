@@ -7,13 +7,13 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "../../contracts/exchanges/UniswapV3.sol";
-import "../../contracts/TokeLpVault.sol";
+import "../../contracts/xVault.sol";
 import "../../contracts/interfaces/tokemak/IRewards.sol";
 import "../../contracts/interfaces/tokemak/IManager.sol";
 import "../../contracts/interfaces/tokemak/ILiquidityPool.sol";
 import "../../contracts/interfaces/IWETH9.sol";
 import {TB} from "./TestBase.sol";
-interface ITokeLpVault {
+interface IxVault {
     event Deposit(address _investor, uint256 _amount);
     event Stake(address _investor, uint256 _amount);
     event Withdraw(address _investor, uint256 _amount);
@@ -22,12 +22,14 @@ interface ITokeLpVault {
 /**
     MAINNET FORK INTEGRATION
  */
-contract E2eTest is Test ,ITokeLpVault{
+contract E2eTest is Test ,IxVault{
     UniswapV3 private exchange;
 
-    TokeLpVault private vault;
+    xVault private vault;
     IERC20 private underlying;
     address private user1;
+    uint32 internal constant REWARD_CYCLE = 7 days;
+
 
     function setUp() public {
         // FORK  - Simulate mainnet deployments
@@ -40,12 +42,13 @@ contract E2eTest is Test ,ITokeLpVault{
 
         // Deploy contracts
         exchange = new UniswapV3(TB.UNIV3_ROUTER);
-        vault = new TokeLpVault(
+        vault = new xVault(
             ILiquidityPool(TB.TOKE_SUSHI_REACTOR),
             IRewards(TB.TOKE_REWARDS),
             IManager(TB.TOKE_MANAGER),
             IUniswapV2Router02(TB.SUSHI_ROUTER),
-            ERC20(TB.SUSHI_LP_TOKEN)
+            ERC20(TB.SUSHI_LP_TOKEN),
+            REWARD_CYCLE
         );
         vm.label(address(vault), "Tokevault");
 

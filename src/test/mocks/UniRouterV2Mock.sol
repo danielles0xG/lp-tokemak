@@ -1,6 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.11;
 import {ERC20, MockERC20} from "@solmate/test/utils/mocks/MockERC20.sol";
+import "forge-std/Test.sol";
 
 
 contract UniRouterV2Mock{
@@ -9,9 +10,8 @@ contract UniRouterV2Mock{
     address private wantToken;
     address private lpToken;
 
-    constructor(address _lpToken,address _wantToken){
+    constructor(address _lpToken){
         weth = new MockERC20("weth","WETHM",18);
-        wantToken = _wantToken;
         lpToken = _lpToken;
     }
     function WETH() external returns(address){
@@ -25,7 +25,10 @@ contract UniRouterV2Mock{
         uint deadline
     ) external returns (uint[] memory amounts){
         MockERC20(path[0]).transferFrom(msg.sender,address(this),amountIn);
-        MockERC20(wantToken).mint(msg.sender,amountOutMin);
+        MockERC20(weth).mint(msg.sender,1 ether);
+        amounts = new uint256[](2);
+        amounts[0] = 1 ether;
+        amounts[1] = 1 ether;
     }
 
     function addLiquidity(
@@ -34,8 +37,15 @@ contract UniRouterV2Mock{
         uint256 amount0,
         uint256 amount1,
         uint256 lpAmountAMin,
-        uint256 lpAmountBMin
-    ) internal returns (uint256 out0, uint256 out1, uint256 lp) {
-        MockERC20(lpToken).mint(msg.sender,(amount0 + amount1) * (10**18) / 2);
+        uint256 lpAmountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 out0, uint256 out1, uint256 lp) {
+        uint256 mintAmount = 1 ether;
+        MockERC20(lpToken).mint(msg.sender,mintAmount);
+        console.log("after mint;");
+        out0 = 0;
+        out1 = 0;
+        lp = mintAmount;
     }
 }  
