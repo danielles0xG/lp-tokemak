@@ -360,7 +360,7 @@ FNDA:256,StrategyMock.withdraw
 DA:26,256
 FN:29,StrategyMock.totalAssets
 FNDA:0,StrategyMock.totalAssets
-DA:30,1009
+DA:30,988
 FN:33,StrategyMock.mint
 FNDA:256,StrategyMock.mint
 DA:34,256

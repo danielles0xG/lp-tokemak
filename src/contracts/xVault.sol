@@ -13,33 +13,56 @@ import "./interfaces/tokemak/Babylonian.sol";
 import "./interfaces/tokemak/IRewards.sol";
 import "./interfaces/tokemak/IManager.sol";
 import "./interfaces/tokemak/ILiquidityPool.sol";
+import "solmate/utils/SafeCastLib.sol";
 import "forge-std/Test.sol";
 
 // @title Tokemak's UNI LP auto-compound strategy
 // @author Daniel G.
 // @notice Basic implementation of harvesting LP token rewards from Tokemak protocol
 // @custz is an experimental contract.
-contract TokeLpVault is ERC4626, Ownable {
+contract xVault is ERC4626, Ownable {
+    using SafeCastLib for *;
+
     // @dev Staking Assets
-    IERC20 public tokematAsset;
-    IERC20 public wethAsset;
+    IERC20 private tokematAsset;
+    IERC20 private wethAsset;
 
     // @dev Tokemak's contract dependencies
-    IRewards public tokemakRewards;
-    IManager public tokemakManager;
-    ILiquidityPool public tokemakSushiReactor;
-    IUniswapV2Router02 public uniswapV2Router02;
+    IRewards private tokemakRewards;
+    IManager private tokemakManager;
+    ILiquidityPool private tokemakSushiReactor;
+    IUniswapV2Router02 private uniswapV2Router02;
 
-    uint256 internal storedTotalAssets;
+    /// @notice internal accounting
+    uint256 private storedTotalAssets;
+
+    /// @notice pool asset cap
+    uint256 private maxPoolLimit;    
+    
+    /// @notice the maximum length of a rewards cycle
+    uint32 public immutable rewardsCycleLength;
+
+    /// @notice the effective start of the current cycle
+    uint32 public lastSync;
+
+    /// @notice the end of the current cycle. Will always be evenly divisible by `rewardsCycleLength`.
+    uint32 public rewardsCycleEnd;
+
+    /// @notice the amount of rewards distributed in a the most recent cycle.
+    uint192 public lastRewardAmount;
+
 
     // @dev Auto-compound events to store datapoints on chain
-    event Deposit(address _investor, uint256 _amount);
-    event Stake(address _investor, uint256 _amount);
-    event Withdraw(address _investor, uint256 _amount);
-    event RequestWithdraw(address _investor, uint256 _amount);
+    event Deposit(address indexed investor, uint256 _amount);
+    event Stake(address indexed investor, uint256 _amount);
+    event Withdraw(address indexed investor, uint256 _amount);
+    event RequestWithdraw(address indexed investor, uint256 _amount);
+    event NewRewardsCycle(uint32 indexed cycleEnd, uint256 rewardAmount);
+
 
     error RequestWithdrawError();
     error InvalidSigError();
+    error SyncError();
 
     // @notice Init strategy Tokemak's dependencies
     // @dev Init tokemak dependencies
@@ -52,7 +75,8 @@ contract TokeLpVault is ERC4626, Ownable {
         IRewards _tokemakRewardsAddress,
         IManager _tokemakManagerAddress,
         IUniswapV2Router02 _sushiSwapV2Router02Address,
-        ERC20 _underlying
+        ERC20 _underlying,
+        uint32 _rewardsCycleLength
     ) ERC4626(_underlying, "dTokeVault", "dTKV") {
         require(address(_underlying) != address(0), "address zero");
         tokemakSushiReactor = ILiquidityPool(_tokemakSushiReactorAddress);
@@ -61,13 +85,23 @@ contract TokeLpVault is ERC4626, Ownable {
         uniswapV2Router02 = IUniswapV2Router02(_sushiSwapV2Router02Address);
         wethAsset = IERC20(uniswapV2Router02.WETH());
         tokematAsset = IERC20(tokemakRewards.tokeToken());
+        rewardsCycleLength = _rewardsCycleLength;
+        // seed initial rewardsCycleEnd
+        rewardsCycleEnd = (block.timestamp.safeCastTo32() / rewardsCycleLength) * rewardsCycleLength;
+    
     }
 
     receive() payable external{
         revert("Unsupported");
     }
     fallback() external{
+        console.log("msg sender: ",msg.sender);
         revert("Unsupported");
+    }
+
+    function setPoolLimit(uint256 _newLimit) external onlyOwner {
+        require(_newLimit != 0, "DNP: zero amount");
+        maxPoolLimit = _newLimit;
     }
 
     // @notice Auto-compound call to claim and re-stake rewards
@@ -80,25 +114,28 @@ contract TokeLpVault is ERC4626, Ownable {
     // @param v ECDSA signature,
     // @param r ECDSA signature,
     // @param s ECDSA signature,
-    function autoCompoundWithPermit(IRewards.Recipient calldata recipient,bytes memory stratConfig, bytes memory sig) external {
+    function autoCompoundWithPermit(
+        IRewards.Recipient calldata recipient,
+        bytes calldata stratConfig,
+        uint8 v, bytes32 r, bytes32 s) external {
         // @dev 1.- Check for positive amount of toke rewards in current cycle
         uint256 claimableRwrds = _getClaimableAmount(recipient);
+        (uint256 lpAmountAMin,uint256 lpAmountBMin, uint256 swapWethMinOut) = abi.decode(stratConfig, (uint256,uint256,uint256));
         uint256 tokemakBalance;
+        
 
         // @dev 2.- Claim TOKE rewards
         if (claimableRwrds > 0) {
-            (bytes32 r, bytes32 s, uint8 v) = _splitSign(sig);
-            _claim(recipient,r,s,v);
+            _claim(recipient,v,r,s);
             tokemakBalance = tokematAsset.balanceOf(address(this));
             require(tokemakBalance >= claimableRwrds, "TUniLPS 05: Rewards claim failed.");
         }
         // @dev 3.- Swap needed amount of total TOKE rewards to form token pair TOKE-ETH
-        _balanceLiquidity(tokemakBalance);
+        _balanceLiquidity(tokemakBalance,swapWethMinOut);
 
         uint256 wethBalance = wethAsset.balanceOf(address(this));
 
         // @dev 4.- Provide liquidity to UniswapV2 to TOKE-ETH pool
-        (uint256 lpAmountAMin,uint256 lpAmountBMin) = abi.decode(stratConfig, (uint256,uint256));
         (, , uint256 lpAmount) = _addLiquidity(address(tokematAsset), address(wethAsset), tokemakBalance, wethBalance,lpAmountAMin,lpAmountBMin);
         // @dev 5.- Stake UNIV2 LP Token into TOKEMAK Uni LP Token Pool
         if (lpAmount > 0) _stake(lpAmount);
@@ -112,11 +149,53 @@ contract TokeLpVault is ERC4626, Ownable {
         emit RequestWithdraw(_msgSender(), amount);
     }
 
+
+    /// @notice Compute the amount of tokens available to share holders.
+    ///         Increases linearly during a reward distribution period from the sync call, not the cycle start.
     function totalAssets() public view override returns (uint256) {
-        return totalSupply;
+        // cache global vars
+        uint256 storedTotalAssets_ = storedTotalAssets;
+        uint192 lastRewardAmount_ = lastRewardAmount;
+        uint32 rewardsCycleEnd_ = rewardsCycleEnd;
+        uint32 lastSync_ = lastSync;
+
+        if (block.timestamp >= rewardsCycleEnd_) {
+            // no rewards or rewards fully unlocked
+            // entire reward amount is available
+            return storedTotalAssets_ + lastRewardAmount_;
+        }
+
+        // rewards not fully unlocked
+        // add unlocked rewards to stored total
+        uint256 unlockedRewards = (lastRewardAmount_ * (block.timestamp - lastSync_)) / (rewardsCycleEnd_ - lastSync_);
+        return storedTotalAssets_ + unlockedRewards;
     }
+
+    /// @notice Distributes rewards to xERC4626 holders.
+    /// All surplus `asset` balance of the contract over the internal balance becomes queued for the next cycle.
+    function syncRewards() public virtual{
+        uint192 lastRewardAmount_ = lastRewardAmount;
+        uint32 timestamp = block.timestamp.safeCastTo32();
+
+        if (timestamp < rewardsCycleEnd) revert SyncError();
+
+        uint256 storedTotalAssets_ = storedTotalAssets;
+        uint256 nextRewards = tokematAsset.balanceOf(address(this)) - storedTotalAssets_ - lastRewardAmount_;
+
+        storedTotalAssets = storedTotalAssets_ + lastRewardAmount_; // SSTORE
+
+        uint32 end = ((timestamp + rewardsCycleLength) / rewardsCycleLength) * rewardsCycleLength;
+
+        // Combined single SSTORE
+        lastRewardAmount = nextRewards.safeCastTo192();
+        lastSync = timestamp;
+        rewardsCycleEnd = end;
+
+        emit NewRewardsCycle(end, nextRewards);
+    }
+
     // @notice Withdrawal Tokemak's Uni LP tokens
-    function beforeWithdraw(uint256 amount, uint256 shares) internal override {
+    function beforeWithdraw(uint256 amount, uint256 /*shares*/) internal override {
         (uint256 minCycle, ) = tokemakSushiReactor.requestedWithdrawals(_msgSender());
         require(minCycle > tokemakManager.getCurrentCycleIndex(), "TUniLPS 07: Withdrawal not yet available.");
         require(amount <= storedTotalAssets, "TUniLPS 08: insufficient funds to withdraw.");
@@ -126,12 +205,19 @@ contract TokeLpVault is ERC4626, Ownable {
         emit Withdraw(_msgSender(),amount);
     }
 
+    function deposit(uint256 amount, address receiver) public override returns (uint256 shares) {
+            require(amount > 0,"TLPV::deposit:InvalidAmount");
+            require(address(receiver) != address(0x0),"TLPV::deposit:InvalidAddress");
+            super.deposit(amount,receiver);
+    }
+    
     // @notice Deposits Uni LP tokens into contract callable by only owner
     // @dev Only Uni LP tokens for TOKE-ETH LP pool allowed
     // @dev Stakes all its deposits in Tokemak's UNI LP token pool
     // @param amount Amount of UNI LP token to deposit
     function afterDeposit(uint256 /*asset*/, uint256 amount) internal override {
-        SafeERC20.safeApprove(IERC20(address(asset)), address(tokemakSushiReactor), amount);
+        if(storedTotalAssets >= maxPoolLimit)
+        SafeERC20.safeIncreaseAllowance(IERC20(address(asset)), address(tokemakSushiReactor), amount);
         storedTotalAssets += amount;
        _stake(amount);
     }
@@ -149,9 +235,7 @@ contract TokeLpVault is ERC4626, Ownable {
     // @param s ECDSA signature s,
     function _claim(
         IRewards.Recipient calldata recipient,
-        bytes32 r,
-        bytes32 s,
-        uint8 v
+        uint8 v, bytes32 r, bytes32 s
     ) internal {
         tokemakRewards.claim(recipient, v, r, s);
     }
@@ -166,16 +250,17 @@ contract TokeLpVault is ERC4626, Ownable {
     // @notice Buy needed WETHc to form token pair TOKE-ETH
     // @param _amount of weth to buy
     // @return Weth amount bought
-    function _balanceLiquidity(uint256 _amount) internal returns (uint256) {
+    function _balanceLiquidity(uint256 _amount,uint256 swapAmountOut) internal returns (uint256) {
         (uint256 reserveA, , ) = IUniswapV2Pair(address(asset)).getReserves();
 
         // @dev ondo.fi use of Zapper's Babylonian function to balance amount of assets for LP pool
         uint256 amountToSwap = _calculateSwapInAmount(reserveA, _amount);
+
         address[] memory path = new address[](2);
         path[0] = address(tokematAsset);
         path[1] = address(wethAsset);
 
-        return _swapExactTokens(amountToSwap, 0, path);
+        return _swapExactTokens(amountToSwap, swapAmountOut, path);
     }
 
     // @notice Swaps an exact amount of input tokens for as many output tokens as possible,
@@ -196,7 +281,8 @@ contract TokeLpVault is ERC4626, Ownable {
     // @param reserveIn Amount of reserves for asset 0
     // @param userIn Availabe amount of asset 0 to swap
     // @return Amount of userIn to swap for asset 1
-    function _calculateSwapInAmount(uint256 reserveIn, uint256 userIn) internal pure returns (uint256) {
+    function _calculateSwapInAmount(uint256 reserveIn, uint256 userIn) internal view returns (uint256) {
+        console.log("uint256 reserveIn, uint256 userIn: ", reserveIn, userIn);
         return (Babylonian.sqrt(reserveIn * (userIn * 3988000 + reserveIn * 3988009)) - reserveIn * 1997) / 1994;
     }
 
