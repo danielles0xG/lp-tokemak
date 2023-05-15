@@ -114,7 +114,7 @@ contract E2eTest is Test ,IxVault{
     }
     function testWithdraw() public{
         uint256 depositAmount = _setDeposit();
-        vm.expectRevert();
+        vm.warp(8 days);
         vault.withdraw(depositAmount,user1,user1);
     }
 }
