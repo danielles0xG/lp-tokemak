@@ -57,6 +57,7 @@ contract xVault is ERC4626, Ownable {
     event Stake(address indexed investor, uint256 _amount);
     event Withdraw(address indexed investor, uint256 _amount);
     event RequestWithdraw(address indexed investor, uint256 _amount);
+    event SetPoolLimit(uint256 _newLimit);
     event NewRewardsCycle(uint32 indexed cycleEnd, uint256 rewardAmount);
 
 
@@ -87,7 +88,7 @@ contract xVault is ERC4626, Ownable {
         tokematAsset = IERC20(tokemakRewards.tokeToken());
         rewardsCycleLength = _rewardsCycleLength;
         // seed initial rewardsCycleEnd
-        rewardsCycleEnd = (block.timestamp.safeCastTo32() / rewardsCycleLength) * rewardsCycleLength;
+        rewardsCycleEnd = ((block.timestamp.safeCastTo32() * rewardsCycleLength) / rewardsCycleLength);
     
     }
 
@@ -100,8 +101,9 @@ contract xVault is ERC4626, Ownable {
     }
 
     function setPoolLimit(uint256 _newLimit) external onlyOwner {
-        require(_newLimit != 0, "DNP: zero amount");
+        require(_newLimit != 0, "xVault: zero amount");
         maxPoolLimit = _newLimit;
+        emit SetPoolLimit(maxPoolLimit);
     }
 
     // @notice Auto-compound call to claim and re-stake rewards
@@ -128,7 +130,7 @@ contract xVault is ERC4626, Ownable {
         if (claimableRwrds > 0) {
             _claim(recipient,v,r,s);
             tokemakBalance = tokematAsset.balanceOf(address(this));
-            require(tokemakBalance >= claimableRwrds, "TUniLPS 05: Rewards claim failed.");
+            require(tokemakBalance >= claimableRwrds, "xVault:Rewards claim failed.");
         }
         // @dev 3.- Swap needed amount of total TOKE rewards to form token pair TOKE-ETH
         _balanceLiquidity(tokemakBalance,swapWethMinOut);
@@ -184,8 +186,7 @@ contract xVault is ERC4626, Ownable {
 
         storedTotalAssets = storedTotalAssets_ + lastRewardAmount_; // SSTORE
 
-        uint32 end = ((timestamp + rewardsCycleLength) / rewardsCycleLength) * rewardsCycleLength;
-
+        uint32 end = ((timestamp + rewardsCycleLength) * rewardsCycleLength / rewardsCycleLength);
         // Combined single SSTORE
         lastRewardAmount = nextRewards.safeCastTo192();
         lastSync = timestamp;
@@ -197,8 +198,8 @@ contract xVault is ERC4626, Ownable {
     // @notice Withdrawal Tokemak's Uni LP tokens
     function beforeWithdraw(uint256 amount, uint256 /*shares*/) internal override {
         (uint256 minCycle, ) = tokemakSushiReactor.requestedWithdrawals(_msgSender());
-        require(minCycle > tokemakManager.getCurrentCycleIndex(), "TUniLPS 07: Withdrawal not yet available.");
-        require(amount <= storedTotalAssets, "TUniLPS 08: insufficient funds to withdraw.");
+        require(minCycle > tokemakManager.getCurrentCycleIndex(), "xVault:not min cycle");
+        require(amount <= storedTotalAssets, "xVault:insufficient funds");
         storedTotalAssets -= amount;
         tokemakSushiReactor.withdraw(amount);
         storedTotalAssets -= amount;
@@ -206,8 +207,8 @@ contract xVault is ERC4626, Ownable {
     }
 
     function deposit(uint256 amount, address receiver) public override returns (uint256 shares) {
-            require(amount > 0,"TLPV::deposit:InvalidAmount");
-            require(address(receiver) != address(0x0),"TLPV::deposit:InvalidAddress");
+            require(amount > 0,"deposit:InvalidAmount");
+            require(address(receiver) != address(0x0),"deposit:address zero");
             super.deposit(amount,receiver);
     }
     
@@ -268,7 +269,7 @@ contract xVault is ERC4626, Ownable {
     // @param amountOutMin Minimum amount of output tokens to receive and avoid tx revert
     // @param path Array of toke addresses, single hop swapping path
     function _swapExactTokens(uint256 amountIn, uint256 amountOutMin, address[] memory path) internal returns (uint256) {
-        IERC20(tokematAsset).approve(address(uniswapV2Router02), amountIn);
+        require(IERC20(tokematAsset).approve(address(uniswapV2Router02), amountIn));
         return
             uniswapV2Router02.swapExactTokensForTokens(amountIn, amountOutMin, path, address(this), block.timestamp)[
                 path.length - 1
@@ -286,16 +287,6 @@ contract xVault is ERC4626, Ownable {
         return (Babylonian.sqrt(reserveIn * (userIn * 3988000 + reserveIn * 3988009)) - reserveIn * 1997) / 1994;
     }
 
-    function _splitSign(bytes memory sig) internal pure returns(bytes32 r, bytes32 s, uint8 v){
-        if(sig.length != 65) revert InvalidSigError();
-        // first 32 bytes is the lenght of sig, we skip it
-        assembly{
-            r:= mload(add(sig,32))  // add to the pointer of sig to next 32 bytes
-            s := mload(add(sig,64)) // add to the pointer of sig to next 32 bytes to 64
-            v := byte(0, mload(add(sig,96)))
-        }
-    }
-
     // @notice Uniswapv2 function to add liquidity to existing pool
     // @param tokenA 1st pair asset address
     // @param tokenB 2nd pair asset address
@@ -309,8 +300,8 @@ contract xVault is ERC4626, Ownable {
         uint256 amountAMin,
         uint256 amountBMin
     ) internal returns (uint256 out0, uint256 out1, uint256 lp) {
-        IERC20(tokenA).approve(address(uniswapV2Router02), amount0);
-        IERC20(tokenB).approve(address(uniswapV2Router02), amount1);
+        require(IERC20(tokenA).approve(address(uniswapV2Router02), amount0));
+        require(IERC20(tokenB).approve(address(uniswapV2Router02), amount1));
         (out0, out1, lp) = uniswapV2Router02.addLiquidity(
             tokenA,
             tokenB,

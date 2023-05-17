@@ -33,7 +33,7 @@ contract StrategyRouter is ERC4626RouterBase {
         uint256 amount
     ) external {
         require(ERC20(fromVault.asset()).balanceOf(msg.sender) >= amount);
-        fromVault.withdraw(amount,to,msg.sender);
+        require(fromVault.withdraw(amount,to,msg.sender) >= amount);
     }
 
     function reedemShares(
