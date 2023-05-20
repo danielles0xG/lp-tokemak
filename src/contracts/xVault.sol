@@ -117,7 +117,6 @@ contract xVault is ERC4626, Ownable {
             _claim(recipient, v, r, s);
             tokemakBalance = tokematAsset.balanceOf(address(this));
             if (!(tokemakBalance >= claimableRwrds)) revert RwrdClaimError();
-
             // swap token TOKE for underlying(LP SUHI) and deposit
             uint256 lpFromRwrds = _swapExactTokens(tokemakBalance, swapOutMin);
             _stake(tokemakBalance);
@@ -127,8 +126,9 @@ contract xVault is ERC4626, Ownable {
     // @notice Request anticipated withdrawal to Tokemak's Uni LP pool
     // @dev Request will be served on next cycle (currently 7 days)
     function requestWithdrawal(uint256 amount) external {
-        if (!(IERC20(address(this)).balanceOf(msg.sender) <= amount && amount <= totalAssets()))
-            revert RequestWithdrawError();
+        console.log("amount: ",amount);
+        require(amount <= IERC20(address(this)).balanceOf(msg.sender),"Inssuficient balance");
+        require(amount <= totalAssets(),"amount > totalAssets");
         tokemakSushiReactor.requestWithdrawal(amount);
         emit RequestWithdraw(_msgSender(), amount);
     }
@@ -137,14 +137,13 @@ contract xVault is ERC4626, Ownable {
     ///  Increases linearly during a reward distribution period from the sync call, not the cycle start.
     function totalAssets() public view override returns (uint256) {
         // cache global vars
-        uint256 storedTotalAssets_ = storedTotalAssets;
+        /*uint256 storedTotalAssets_ = storedTotalAssets;
         uint192 lastRewardAmount_ = lastRewardAmount;
         uint32 rewardsCycleEnd_ = rewardsCycleEnd;
         uint32 lastSync_ = lastSync;
 
         if (block.timestamp >= rewardsCycleEnd_) {
-            // no rewards or rewards fully unlocked
-            // entire reward amount is available
+            // no rewards or rewards fully unlocked entire reward amount is available
             return storedTotalAssets_ + lastRewardAmount_;
         }
 
@@ -152,6 +151,8 @@ contract xVault is ERC4626, Ownable {
         // add unlocked rewards to stored total
         uint256 unlockedRewards = (lastRewardAmount_ * (block.timestamp - lastSync_)) / (rewardsCycleEnd_ - lastSync_);
         return storedTotalAssets_ + unlockedRewards;
+        */
+        return storedTotalAssets;
     }
 
     /// @notice Distributes rewards to xERC4626 holders.
@@ -204,6 +205,7 @@ contract xVault is ERC4626, Ownable {
 
     /// @notice stakes TOKE rewards from SUSHI LP
     function _stake(uint256 amount) internal {
+        SafeERC20.safeIncreaseAllowance(IERC20(address(asset)), address(tokemakSushiReactor), amount);
         tokemakSushiReactor.deposit(amount);
         emit StakeEvent(_msgSender(), amount);
     }

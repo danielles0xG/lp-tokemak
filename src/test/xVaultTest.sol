@@ -40,10 +40,10 @@ contract xVaultTest is Test {
     function setUp() public {
         vm.startPrank(ADMIN);
         vm.warp(150 days); // used for rewards calculation
-        reactor = new TokePoolMock();
         manager = new TokeManagerMock();
         lpToken = new LpMock();
         tokemakToken = new MockERC20("Tokemak", "TOKE", 18);
+        reactor = new TokePoolMock(address(lpToken),address(tokemakToken));
         swapRouter = new UniRouterV2Mock(address(lpToken));
         rewards = new TokeRewardsMock(IERC20(address(tokemakToken)),TEST_RWRD_SIGNER);
 
@@ -116,6 +116,8 @@ contract xVaultTest is Test {
         // hash both Tokemak Domain Separator
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, hashedRecipient));
         uint256 privateKey = vm.deriveKey(vm.envString("MNEMONIC"), 0);
+
+        // forge signing
         ( v,  r, s) = vm.sign(privateKey, digest);
         vm.stopPrank();
     }
@@ -140,5 +142,28 @@ contract xVaultTest is Test {
             abi.encodePacked(uint256(depositAmount)), // swap out min & path
             v,r,s
         );
+    }
+
+    function testRequestWithdrawal(uint96 amount) public {
+        vm.assume(amount != 0 && amount < 10 ether);
+        vm.startPrank(USER);
+        uint256 userDeposit = 10 ether;
+        lpToken.mint(USER,userDeposit);
+        lpToken.approve(address(vault), userDeposit);
+        vault.deposit(userDeposit, USER);
+        vault.requestWithdrawal(amount);
+        vm.stopPrank();
+    }
+
+    function testWithdraw(uint96 amount) public{
+        vm.assume(amount != 0 && amount < 10 ether);
+        vm.startPrank(USER);
+        uint256 userDeposit = 10 ether;
+        lpToken.mint(USER,userDeposit);
+        lpToken.approve(address(vault), userDeposit);
+        vault.deposit(userDeposit, USER);
+        vault.requestWithdrawal(amount);
+
+        vault.withdraw(amount,USER,USER);
     }
 }

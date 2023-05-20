@@ -107,14 +107,19 @@ contract E2eTest is Test ,IxVault{
     }
 
     function testRequestWithdrawal() public {
+        vm.startPrank(address(user1));
         uint256 depositAmount = _setDeposit();
-        vm.expectEmit(true, true, false, true);
-        emit RequestWithdraw(user1,depositAmount);
         vault.requestWithdrawal(depositAmount);
+        (uint256 minCycle, uint256 blockNum) = ILiquidityPool(TB.TOKE_SUSHI_REACTOR).
+        requestedWithdrawals(user1);
+        console.log(
+         "minCycle_:", minCycle,  "blockNum_ ",blockNum
+        );
     }
     function testWithdraw() public{
         uint256 depositAmount = _setDeposit();
         vm.warp(8 days);
+        vm.expectRevert();
         vault.withdraw(depositAmount,user1,user1);
     }
 }

@@ -25,7 +25,7 @@ contract UniRouterV2Mock{
         uint deadline
     ) external returns (uint[] memory amounts){
         MockERC20(path[0]).transferFrom(msg.sender,address(this),amountIn);
-        MockERC20(lpToken).mint(msg.sender,1 ether);
+        MockERC20(lpToken).mint(msg.sender,amountOutMin);
         amounts = new uint256[](2);
         amounts[0] = 1 ether;
         amounts[1] = 1 ether;
