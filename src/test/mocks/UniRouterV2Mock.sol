@@ -14,7 +14,7 @@ contract UniRouterV2Mock{
         weth = new MockERC20("weth","WETHM",18);
         lpToken = _lpToken;
     }
-    function WETH() external returns(address){
+    function WETH() external view returns(address){
         return address(weth);
     }
     function swapExactTokensForTokens(
@@ -25,7 +25,7 @@ contract UniRouterV2Mock{
         uint deadline
     ) external returns (uint[] memory amounts){
         MockERC20(path[0]).transferFrom(msg.sender,address(this),amountIn);
-        MockERC20(weth).mint(msg.sender,1 ether);
+        MockERC20(lpToken).mint(msg.sender,amountOutMin);
         amounts = new uint256[](2);
         amounts[0] = 1 ether;
         amounts[1] = 1 ether;

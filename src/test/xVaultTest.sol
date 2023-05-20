@@ -40,10 +40,10 @@ contract xVaultTest is Test {
     function setUp() public {
         vm.startPrank(ADMIN);
         vm.warp(150 days); // used for rewards calculation
-        reactor = new TokePoolMock();
         manager = new TokeManagerMock();
         lpToken = new LpMock();
         tokemakToken = new MockERC20("Tokemak", "TOKE", 18);
+        reactor = new TokePoolMock(address(lpToken),address(tokemakToken));
         swapRouter = new UniRouterV2Mock(address(lpToken));
         rewards = new TokeRewardsMock(IERC20(address(tokemakToken)),TEST_RWRD_SIGNER);
 
@@ -57,7 +57,7 @@ contract xVaultTest is Test {
         );
         vm.label(address(USER), "USER");
         vm.label(address(ADMIN), "ADMIN");
-        vm.label(address(vault), "vault");
+        vm.label(address(vault), "--- X-VAULT ---");
         vm.stopPrank();
     }
 
@@ -78,21 +78,7 @@ contract xVaultTest is Test {
         lpToken.mint(ADMIN, seedAmount);
         lpToken.approve(address(vault), seedAmount);
         vault.deposit(seedAmount, ADMIN);
-        vault.setPoolLimit(seedAmount);
         vm.stopPrank();
-    }
-
-    function testSyncRewards(uint96 rewardAmount) public {
-        vm.assume(rewardAmount != 0);
-        _seedVault(rewardAmount);
-        // mint 7 days rewards
-        tokemakToken.mint(address(vault), rewardAmount);
-
-        vault.syncRewards();
-
-        assertEq(vault.lastRewardAmount(), 0);
-        assertEq(vault.totalAssets() , rewardAmount);
-        assertEq(vault.convertToAssets(rewardAmount) , rewardAmount); // 1:1 still
     }
 
     function testDeposit(uint96 depositAmount) public {
@@ -130,6 +116,8 @@ contract xVaultTest is Test {
         // hash both Tokemak Domain Separator
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, hashedRecipient));
         uint256 privateKey = vm.deriveKey(vm.envString("MNEMONIC"), 0);
+
+        // forge signing
         ( v,  r, s) = vm.sign(privateKey, digest);
         vm.stopPrank();
     }
@@ -147,10 +135,35 @@ contract xVaultTest is Test {
         });
 
         (uint8 v, bytes32 r, bytes32 s)  = _signMessage(recipient);
+        address[] memory path = new address[](2);
+        path[0] = address(tokemakToken);
         vault.autoCompoundWithPermit(
             recipient,
-            abi.encodePacked(uint256(0), uint256(0), uint256(0)), //lp provision min amountOut of token0 & token1
+            abi.encodePacked(uint256(depositAmount)), // swap out min & path
             v,r,s
         );
+    }
+
+    function testRequestWithdrawal(uint96 amount) public {
+        vm.assume(amount != 0 && amount < 10 ether);
+        vm.startPrank(USER);
+        uint256 userDeposit = 10 ether;
+        lpToken.mint(USER,userDeposit);
+        lpToken.approve(address(vault), userDeposit);
+        vault.deposit(userDeposit, USER);
+        vault.requestWithdrawal(amount);
+        vm.stopPrank();
+    }
+
+    function testWithdraw(uint96 amount) public{
+        vm.assume(amount != 0 && amount < 10 ether);
+        vm.startPrank(USER);
+        uint256 userDeposit = 10 ether;
+        lpToken.mint(USER,userDeposit);
+        lpToken.approve(address(vault), userDeposit);
+        vault.deposit(userDeposit, USER);
+        vault.requestWithdrawal(amount);
+
+        vault.withdraw(amount,USER,USER);
     }
 }

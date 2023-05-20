@@ -14,4 +14,6 @@ library TB {
         address public constant TOKE_SUSHI_REACTOR = 0x8858A739eA1dd3D80FE577EF4e0D03E88561FaA3;
         address public constant TOKE_REWARDS = 0x79dD22579112d8a5F7347c5ED7E609e60da713C5;
         address public constant TOKE_MANAGER = 0xA86e412109f77c45a3BC1c5870b880492Fb86A14;
+        address public constant TOKE_STAKING = 0x96F98Ed74639689C3A11daf38ef86E59F43417D3;
+        
 }
