@@ -75,7 +75,7 @@ contract E2eTest is Test ,IxVault{
         IERC20(TB.WETH).approve(address(TB.SUSHI_ROUTER), type(uint256).max);
         IERC20(TB.TOKE).approve(address(TB.SUSHI_ROUTER), type(uint256).max);
 
-        (uint256 out0, uint256 out1, uint256 lpAmount) = IUniswapV2Router02(TB.SUSHI_ROUTER).addLiquidity(
+        (, , uint256 lpAmount) = IUniswapV2Router02(TB.SUSHI_ROUTER).addLiquidity(
             TB.WETH,
             TB.TOKE,
             10 ether,

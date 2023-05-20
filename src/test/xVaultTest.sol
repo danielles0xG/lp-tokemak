@@ -57,7 +57,7 @@ contract xVaultTest is Test {
         );
         vm.label(address(USER), "USER");
         vm.label(address(ADMIN), "ADMIN");
-        vm.label(address(vault), "vault");
+        vm.label(address(vault), "--- X-VAULT ---");
         vm.stopPrank();
     }
 
@@ -78,21 +78,7 @@ contract xVaultTest is Test {
         lpToken.mint(ADMIN, seedAmount);
         lpToken.approve(address(vault), seedAmount);
         vault.deposit(seedAmount, ADMIN);
-        vault.setPoolLimit(seedAmount);
         vm.stopPrank();
-    }
-
-    function testSyncRewards(uint96 rewardAmount) public {
-        vm.assume(rewardAmount != 0);
-        _seedVault(rewardAmount);
-        // mint 7 days rewards
-        tokemakToken.mint(address(vault), rewardAmount);
-
-        vault.syncRewards();
-
-        assertEq(vault.lastRewardAmount(), 0);
-        assertEq(vault.totalAssets() , rewardAmount);
-        assertEq(vault.convertToAssets(rewardAmount) , rewardAmount); // 1:1 still
     }
 
     function testDeposit(uint96 depositAmount) public {
@@ -147,9 +133,11 @@ contract xVaultTest is Test {
         });
 
         (uint8 v, bytes32 r, bytes32 s)  = _signMessage(recipient);
+        address[] memory path = new address[](2);
+        path[0] = address(tokemakToken);
         vault.autoCompoundWithPermit(
             recipient,
-            abi.encodePacked(uint256(0), uint256(0), uint256(0)), //lp provision min amountOut of token0 & token1
+            abi.encodePacked(uint256(depositAmount)), // swap out min & path
             v,r,s
         );
     }

@@ -37,7 +37,7 @@ contract TokeRewardsMock {
     IERC20 public immutable tokeToken;
     address public rewardsSigner;
 
-    constructor(IERC20 token, address signerAddress) public {
+    constructor(IERC20 token, address signerAddress) {
         require(address(token) != address(0), "Invalid TOKE Address");
         require(signerAddress != address(0), "Invalid Signer Address");
         tokeToken = token;

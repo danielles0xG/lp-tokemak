@@ -4,7 +4,7 @@ import "forge-std/Test.sol";
 
 contract TokePoolMock{  
     uint256 deposits;
-   function requestWithdrawal(uint256 amount) external returns(bool){
+   function requestWithdrawal(uint256 amount) external view returns(bool){
         return true;
    }
 

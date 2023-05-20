@@ -43,7 +43,7 @@ contract StrategyRouterTest is Test {
         assert(sharesOut >= minSharesOut);
     }
 
-    function testReedemShares(address user,uint96 amount) external {
+    function testReedemShares(uint96 amount) external {
         vm.startPrank(user);
 
         // mint shares to user
