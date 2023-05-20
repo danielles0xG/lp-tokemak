@@ -136,22 +136,6 @@ contract xVault is ERC4626, Ownable {
     /// @notice Compute the amount of tokens available to share holders.
     ///  Increases linearly during a reward distribution period from the sync call, not the cycle start.
     function totalAssets() public view override returns (uint256) {
-        // cache global vars
-        /*uint256 storedTotalAssets_ = storedTotalAssets;
-        uint192 lastRewardAmount_ = lastRewardAmount;
-        uint32 rewardsCycleEnd_ = rewardsCycleEnd;
-        uint32 lastSync_ = lastSync;
-
-        if (block.timestamp >= rewardsCycleEnd_) {
-            // no rewards or rewards fully unlocked entire reward amount is available
-            return storedTotalAssets_ + lastRewardAmount_;
-        }
-
-        // rewards not fully unlocked
-        // add unlocked rewards to stored total
-        uint256 unlockedRewards = (lastRewardAmount_ * (block.timestamp - lastSync_)) / (rewardsCycleEnd_ - lastSync_);
-        return storedTotalAssets_ + unlockedRewards;
-        */
         return storedTotalAssets;
     }
 
