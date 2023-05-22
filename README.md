@@ -1,12 +1,24 @@
-# Tokemak SUSHI LP Reactor strategy
-
+# xTokemak Erc4626 Tokenized Vault #
+## Tokemak Reactors ##
 
 [Tokemak](https://docs.tokemak.xyz/) is a novel protocol designed to generate deep, sustainable liquidity for DeFi and future tokenized applications that will arise throughout the growth and evolution of web3. 
 
 ---------------------------------------
-#### Sushi/Tokemak Liquidity staking vault 
+## xTokemak Vault ##
+**A Sushi/Tokemak Liquidity staking vault**
 
-This is an ERC4626 vault implementation to tokenize the TOKE/ETH liquidity provision as ERC20 shares to depositors.
+This is an ERC4626 vault implementation to tokenize the automation of compounding an initial deposit with Lp toke rewards from sushiswap and Tokemak rewards from its sushi lp reactor.
+
+- The auto compound function of the xTokemakVault contract will claim the rewards available for the total assets staked into TOKE/ETH sushi pool.
+
+- It will sell the tokamak in the sushi swap market for more of the Vault's underlying assets. And lastly, it will stake this Sushi lp token into the Tokamak pool for more Toke rewards.
+
+- The rewards get harvested every 7 days and in the meantime, each investor holds a certain amount of shares equivalent to the amount provided to the vault initially.
+
+
+
+![High-level overview](./img/TokeDiagram.png)
+
 
 ##### ERC4626 Ecosystem Utilities
 
@@ -20,11 +32,14 @@ This repository contains open-source ERC4626 infrastructure that can be used by 
 
 **Strategy Steps:**
 
-- Provide liquidity in sushi swap for weth/toke and stake lp into tokemak reactor for 7 days cycle rewards.
-- Automatic claim rewards in TOKE and swap half/balanced amount for WETH.
-- Provide more liquidity  weth/toke to sushiswap out of TOKE rewards.
-- Reedem rewards, (compound) and provide more liquidity
-- Repeat if rewards tresh hold is met
+- User provide liquidity in sushi swap to the weth/toke pool.
+- User approves sushi lp token to vault and deposits.
+- Vaults mints equivalent shares to user representing the position value at the time.
+- Vault stakes LP token into TOKEMAK reactor.
+- After 7 days reward cycle, TOKEMAK rewards contract will approve TOKE rewards to vault.
+- Auto-compound function will claim rewards in the form of TOKE token and swap these for more underlying vault asset (sushi toke/weth lp).
+- Auto-compound cycle repeats every 7 days to increment value of the shares.
+- User will call public function to preview conversion of shares to vaults underlying token in order to monitor or redeem/withdraw.
 
 **Install**
 
