@@ -52,12 +52,9 @@ contract xVault is ERC4626, Ownable {
     event StakeEvent(address indexed investor, uint256 _amount);
     event WithdrawEvent(address indexed investor, uint256 _amount);
     event RequestWithdraw(address indexed investor, uint256 _amount);
-    event SetPoolLimit(uint256 _newLimit);
-    event NewRewardsCycle(uint32 indexed cycleEnd, uint256 rewardAmount);
 
     error RequestWithdrawError();
     error InvalidSigError();
-    error SyncError();
     error RwrdClaimError();
 
     // @notice Init strategy Tokemak's dependencies
@@ -126,9 +123,7 @@ contract xVault is ERC4626, Ownable {
     // @notice Request anticipated withdrawal to Tokemak's Uni LP pool
     // @dev Request will be served on next cycle (currently 7 days)
     function requestWithdrawal(uint256 amount) external {
-        console.log("amount: ",amount);
-        require(amount <= IERC20(address(this)).balanceOf(msg.sender),"Inssuficient balance");
-        require(amount <= totalAssets(),"amount > totalAssets");
+        if(!(this.balanceOf(_msgSender()) >= amount)) revert RequestWithdrawError();
         tokemakSushiReactor.requestWithdrawal(amount);
         emit RequestWithdraw(_msgSender(), amount);
     }
@@ -137,28 +132,6 @@ contract xVault is ERC4626, Ownable {
     ///  Increases linearly during a reward distribution period from the sync call, not the cycle start.
     function totalAssets() public view override returns (uint256) {
         return storedTotalAssets;
-    }
-
-    /// @notice Distributes rewards to xERC4626 holders.
-    /// All surplus `asset` balance of the contract over the internal balance becomes queued for the next cycle.
-    function syncRewards() public virtual {
-        uint192 lastRewardAmount_ = lastRewardAmount;
-        uint32 timestamp = block.timestamp.safeCastTo32();
-
-        if (timestamp < rewardsCycleEnd) revert SyncError();
-
-        uint256 storedTotalAssets_ = storedTotalAssets;
-        uint256 nextRewards = tokematAsset.balanceOf(address(this)) - storedTotalAssets_ - lastRewardAmount_;
-
-        storedTotalAssets = storedTotalAssets_ + lastRewardAmount_; // SSTORE
-
-        uint32 end = (((timestamp + rewardsCycleLength) * rewardsCycleLength) / rewardsCycleLength);
-        // Combined single SSTORE
-        lastRewardAmount = nextRewards.safeCastTo192();
-        lastSync = timestamp;
-        rewardsCycleEnd = end;
-
-        emit NewRewardsCycle(end, nextRewards);
     }
 
     // @notice Withdrawal Tokemak's Uni LP tokens
@@ -171,9 +144,11 @@ contract xVault is ERC4626, Ownable {
         emit WithdrawEvent(_msgSender(), amount);
     }
 
+    /// @notice underlying asset as unic valid form of deposit
+    /// @param amount of lp token to invest
+    /// @param receiver depositing on behalf of
     function deposit(uint256 amount, address receiver) public override returns (uint256 shares) {
-        require(amount > 0, "deposit:InvalidAmount");
-        require(address(receiver) != address(0x0), "deposit:address zero");
+        require(amount > 0 && receiver != address(0x0), "XVault:deposit:invalid params");
         super.deposit(amount, receiver);
     }
 
@@ -194,12 +169,12 @@ contract xVault is ERC4626, Ownable {
         emit StakeEvent(_msgSender(), amount);
     }
 
-    // @notice Claim Tokemak's rewards in Toke Asset for being LP
-    // @param recipient Struct:
-    //        chainId, cycle (epochs for funds management), wallet address, claim amount
-    // @param v ECDSA signature v,
-    // @param r ECDSA signature r,
-    // @param s ECDSA signature s,
+    /// @notice Rewards signatures params are served by tokemaks off-chain service
+    /// @param recipient Struct:
+    ///        chainId, cycle (epochs for funds management), wallet address, claim amount
+    /// @param v ECDSA signature v,
+    /// @param r ECDSA signature r,
+    /// @param s ECDSA signature s,
     function _claim(IRewards.Recipient calldata recipient, uint8 v, bytes32 r, bytes32 s) internal {
         tokemakRewards.claim(recipient, v, r, s);
     }
@@ -219,7 +194,7 @@ contract xVault is ERC4626, Ownable {
         uint256 amountOutMin
     ) internal returns (uint256) {
         address[] memory path = new address[](2);
-        path[0] = address(tokematAsset);
+        path[0] = address(tokematAsset); // we always swap this two assets
         path[1] = address(asset);
         require(IERC20(tokematAsset).approve(address(uniswapV2Router02), amountIn));
         return
